@@ -51,7 +51,7 @@ full_if_old=360D         # Cause 'full' operation to perform a full
 backup_basename='backup' # Directory name for local backups (i.e., destination
                          # /Volumes/my_drive/backup/ or /media/my_drive/backup/)
 tempdir=''               # the TMPDIR to use for Duplicity
-dup_params=''            # Parameters to pass to Duplicity
+dup_params=()            # Parameters to pass to Duplicity
 EOF
     exit 1
 fi
@@ -176,32 +176,36 @@ else
 directory /Volumes/$destination/$backup_basename/ not found"
 fi
 
-# Set duplicity parameters
-dup_params="-v$verbosity --name $destination --allow-source-mismatch $dup_params"
+# Set duplicity parameters; older config files may still be using a string, so check
+if [[ ! -n "$(declare -p dup_params 2>/dev/null | grep 'declare \-a')" ]]; then
+    printf "$(basename $0): passing dup_params as a string is deprecated.  Please update it to an array of arguments.\n"
+    dup_params=($dup_params)
+fi
+dup_params+=("-v$verbosity" --name "$destination" --allow-source-mismatch)
 
 if [[ "$file" != '-' ]]; then
-    dup_params="--file-to-restore $file $dup_params"
+    dup_params+=(--file-to-restore "$file")
 fi
 if [[ "$dry_run" == true ]]; then
-    dup_params="--dry-run $dup_params"
+    dup_params+=(--dry-run)
 fi
 if [[ "$use_agent" == true ]]; then
-    dup_params="--use-agent $dup_params"
+    dup_params+=(--use-agent)
 fi
 if [[ ! "$encrypt_key" == '-' ]]; then
-    dup_params="--encrypt-key $encrypt_key $dup_params"
+    dup_params+=(--encrypt-key "$encrypt_key")
 fi
 if [[ ! "$sign_key" == '-' ]]; then
-    dup_params="--sign-key $sign_key $dup_params"
+    dup_params+=(--sign-key "$sign_key")
 fi
 if [[ "$time" != "now" ]]; then
-    dup_params="-t$time $dup_params"
+    dup_params+=("-t$time")
 fi
 if [[ "$vol_size" != 25 ]]; then
-    dup_params="--volsize $vol_size $dup_params"
+    dup_params+=(--volsize "$vol_size")
 fi
 if [[ "$tempdir" != '' ]]; then
-	dup_params="--tempdir $tempdir $dup_params"
+    dup_params+=(--tempdir "$tempdir")
 fi
 
 # Quick checks
@@ -242,38 +246,38 @@ case "$operation" in
     auto)
         printf "Backing up selected directories to $destination...\n\n"
         duplicity --full-if-older-than "$full_if_old" --exclude-globbing-filelist \
-            "$exclude_file" $dup_params "$source" \
+            "$exclude_file" "${dup_params[@]}" "$source" \
             "$destination_path" \
             2>&1 | tee -a "$log_file"
         ;;
     full)
         printf "Backing up selected directories to $destination...\n\n"
         duplicity full --exclude-globbing-filelist \
-            "$exclude_file" $dup_params "$source" \
+            "$exclude_file" "${dup_params[@]}" "$source" \
             "$destination_path" \
             2>&1 | tee -a "$log_file"
         ;;
     inc)
         printf "Backing up selected directories to $destination...\n\n"
         duplicity incremental --exclude-globbing-filelist \
-            "$exclude_file" $dup_params "$source" \
+            "$exclude_file" "${dup_params[@]}" "$source" \
             "$destination_path" \
             2>&1 | tee -a "$log_file"
         ;;
     clean)
         printf "Cleaning up $destination backup files...\n\n"
-        duplicity cleanup --extra-clean --force $dup_params "$destination_path" \
+        duplicity cleanup --extra-clean --force "${dup_params[@]}" "$destination_path" \
             2>&1 | tee -a "$log_file"
         ;;
     restore)
             printf "Restoring $destination to $restore_path...\n\n"
-            duplicity restore $dup_params "$destination_path" "$restore_path" \
+            duplicity restore "${dup_params[@]}" "$destination_path" "$restore_path" \
                 2>&1 | tee -a "$log_file"
         ;;
     verify)
         if [[ -d "$restore_path" ]]; then
             printf "Verifying backup filesets on $destination...\n\n"
-            duplicity verify $dup_params "$destination_path" "$restore_path" \
+            duplicity verify "${dup_params[@]}" "$destination_path" "$restore_path" \
                 2>&1 | tee -a "$log_file"
         else
             _report_error "restore path $restore_path not a directory"
@@ -281,12 +285,12 @@ case "$operation" in
         ;;
     remove)
         printf "Removing backup sets older than $remove_n full on $destination...\n\n"
-        duplicity remove-all-but-n-full "$remove_n" --force $dup_params "$destination_path" \
+        duplicity remove-all-but-n-full "$remove_n" --force "${dup_params[@]}" "$destination_path" \
             2>&1 | tee -a "$log_file"
         ;;
     status)
         printf "Checking collection status on $destination...\n\n"
-        duplicity collection-status $dup_params "$destination_path" \
+        duplicity collection-status "${dup_params[@]}" "$destination_path" \
             2>&1 | tee -a "$log_file"
         ;;
     paramtest)
@@ -294,11 +298,11 @@ case "$operation" in
         printf "Source: $source\n"
         printf "Destination: $destination\n"
         printf "Destination path: $destination_path\n"
-        printf "Parameters: $dup_params\n"
+        printf "Parameters: %s\n" "${dup_params[*]}"
         ;;
     list)
         printf "Listing files on $destination...\n\n"
-        duplicity list-current-files $dup_params "$destination_path" \
+        duplicity list-current-files "${dup_params[@]}" "$destination_path" \
             2>&1 | tee -a "$log_file"
         ;;
     check)
