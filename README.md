@@ -1,4 +1,4 @@
-# Horocrux backup script #
+# Horcrux backup script #
 
 This is my modified version of the script available here
 
